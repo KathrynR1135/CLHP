@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>City-Year Map</title>
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #mapContainer {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+      }
+
+      /* Control container (buttons + slider) */
+      #controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-family: sans-serif;
+      }
+
+      #controls h3 {
+        margin-top: 0;
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+
+      .city-button,
+      .filter-button {
+        background: #0078a8;
+        border: none;
+        color: white;
+        padding: 6px 10px;
+        margin-right: 6px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .city-button:hover,
+      .filter-button:hover {
+        background: #0078a8;
+      }
+
+      #yearLabel {
+        font-size: 14px;
+        margin-bottom: 4px;
+        display: block;
+      }
+
+      #yearSlider {
+        width: 220px;
+      }
+
+      #cuFilterContainer {
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      /* From here down all supports the search bar*/
+      #searchContainer {
+        position: absolute;
+        top: 10px;
+        right: 50px;
+        z-index: 10;
+
+        width: 300px;
+        background: white;
+        border-radius: 6px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        font-family: sans-serif;
+        overflow: hidden;
+      }
+
+      #search {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        outline: none;
+        font-size: 14px;
+        box-sizing: border-box;
+        border-bottom: 1px solid #ddd;
+      }
+
+      #searchResults {
+        max-height: 300px;
+        overflow-y: auto;
+      }
+
+      #searchResults > div {
+        padding: 8px;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+      }
+
+      #searchResults > div:hover {
+        background: #f3f3f3;
+      }
+
+    </style>
+  </head>
+
+  <body>
+    <div id="controls">
+      <h3>City</h3>
+      <button class="city-button" data-city="Boulder">Boulder</button>
+      <button class="city-button" data-city="Lafayette">Lafayette</button>
+      <button class="city-button" data-city="Longmont">Longmont</button>
+      <button class="city-button" data-city="Region">Region</button>
+
+      <div id="cuFilterContainer">
+          <h3>Resident Filter</h3>
+          <button class="filter-button" data-filter="all">Show All</button>
+          <button class="filter-button" data-filter="cu">Show Only CU-Affiliates</button>
+          <button class="filter-button" data-filter="students">Show Only University Students</button>
+        </div>
+
+      <h3>Year: <span id="yearValue">1975</span></h3>
+      <button id="playButton" style="margin-top:8px; padding:6px 12px; border:none; border-radius:4px; background:#0078a8; color:white; cursor:pointer;">
+        ▶ Play
+      </button>
+
+      <div>
+        <!-- <label id="yearLabel">Year: <span id="yearValue">1975</span></label> -->
+        <input id="yearSlider" type="range" min="0" max="6" step="1" value="6">
+      </div>
+    </div>
+
+    <div id="mapContainer">
+      <div id="searchContainer">
+        <input id="search" type="text" placeholder="Search by Name or Address">
+        <div id="searchResults"></div>
+      </div>
+    </div>
+    
+    <!--For the search bar-->
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
+    <!--For the map-->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js"></script>
+
+    <script>
+      mapboxgl.accessToken = 'pk.eyJ1Ijoia2F0aHJ5bjExMzUiLCJhIjoiY21mMzQ0emhkMDg5ZjJxcTVkYmpxenJoNSJ9.GoUAILryU_UK5jy7-StXaA';
+
+      // Load basemap, set initial zoom
+      // Note - if some, but not all, of the basemap is loading, see if there is a new version of the style and update it
+      const map = new mapboxgl.Map({
+        container: 'mapContainer',
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [-105.25, 40.015], // Boulder area
+        zoom: 11
+      });
+
+      map.addControl(new mapboxgl.NavigationControl());
+
+      let currentYear = 1975;
+      let currentCity = "Boulder";
+      let residentFilter = "all";
+
+      // Define bounding boxes for each city (approximate)
+      const cityBounds = {
+        Boulder: [[-105.32, 39.95], [-105.18, 40.08]],
+        Lafayette: [[-105.12, 39.97], [-105.04, 40.03]],
+        Longmont: [[-105.14, 40.13], [-105.05, 40.20]],
+        Region: [[-105.32, 39.95], [-105.04, 40.20]]
+      };
+
+      // GeoJSON File loaded here
+      map.on('load', async () => {
+        const response = await fetch('geocoded_all_cities.geojson');
+        const geojson = await response.json();
+
+        map.addSource('points', {
+          type: 'geojson',
+          data: geojson
+        });
+
+        // Map points for each resident
+        map.addLayer({
+          id: 'points',
+          type: 'circle',
+          source: 'points',
+          paint: {
+            'circle-color': [
+              'case',
+              ['==', ['get', 'cu_affiliation'], true],
+              '#CFB87C',
+              ['==', ['get', 'cu_affiliation'], false],
+              '#565A5C',
+              '#cccccc'
+            ],
+            'circle-radius': 6,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff'
+          },
+          filter: ['all',
+            ['==', ['get', 'year'], currentYear]
+            // ,
+            // ['==', ['get', 'city'], currentCity]
+          ]
+        });
+
+        // Search bar code starts
+        const fuse = new Fuse(geojson.features, {
+          keys: [
+            "properties.address",
+            "properties.residents.name"   // search names inside residents[]
+          ],
+          threshold: 0.3, // required level of similarity to search
+        });
+
+        const searchInput = document.getElementById("search");
+        const resultsDiv = document.getElementById("searchResults");
+
+        // Typing in search box
+        searchInput.addEventListener("input", (e) => {
+          const query = e.target.value.trim();
+          if (!query) {
+            resultsDiv.innerHTML = "";
+            return;
+          }
+          const results = fuse.search(query);
+          showSearchResults(results.slice(0, 10));
+        });
+
+        // Displaying search results
+        function showSearchResults(results) {
+          resultsDiv.innerHTML = "";
+
+          results.forEach(result => {
+            const f = result.item;
+            const props = f.properties;
+            const residentNames = props.residents
+                .map(r => r.name)
+                .join(", ");
+            const row = document.createElement("div");
+            row.innerHTML = `
+              <strong>${props.address}</strong><br>
+              <small>${residentNames}</small>
+            `;
+            row.onclick = () => zoomToFeature(f);
+
+            resultsDiv.appendChild(row);
+          });
+        }
+
+        // Zooming in - updated to make the map layer switch to the earliest year the searched person/address is in the data
+        function zoomToFeature(feature) {
+          const coords = feature.geometry.coordinates;
+          const address = feature.properties.address;
+          const residentNames = feature.properties.residents.map(r => r.name.toLowerCase());
+
+          // Find matching features
+          const matchingYears = geojson.features
+            .filter(f => {
+              const sameAddress = f.properties.address === address;
+              const residentsList = f.properties.residents.map(r => r.name.toLowerCase());
+              const nameMatch = residentsList.some(n => residentNames.includes(n));
+              return sameAddress || nameMatch;
+            })
+            .map(f => f.properties.year);
+
+          // Pick the earliest year
+          const earliestYear = Math.min(...matchingYears);
+
+          // Update filter
+          currentYear = earliestYear;
+          document.getElementById("yearValue").textContent = earliestYear;
+
+          // Update slider position
+          const validYears = [1916, 1926, 1936, 1946, 1955, 1965, 1975];
+          const yearIndex = validYears.indexOf(earliestYear);
+          if (yearIndex !== -1) {
+            document.getElementById("yearSlider").value = yearIndex;
+          }
+
+          // Run filter
+          updateFilter();
+
+          // Zoom
+          map.flyTo({
+            center: coords,
+            zoom: 15,
+            speed: 0.7
+          });
+
+          // Popup
+          let popupHTML = `
+            <strong>Address:</strong> ${feature.properties.address}<br><br>
+            <strong>Residents:</strong><br>
+          `;
+
+          feature.properties.residents.forEach(r => {
+            popupHTML += `• ${r.name} (${r["role(s)"]})<br>`;
+          });
+
+          // Execution
+          new mapboxgl.Popup()
+            .setLngLat(coords)
+            .setHTML(popupHTML)
+            .addTo(map);
+
+          // clear dropdown results
+          resultsDiv.innerHTML = "";
+        }
+
+
+        // University affiliation filter code
+        function updateFilter() {
+          const filters = ['all', ['==', ['get', 'year'], currentYear]];
+
+          if (residentFilter === "cu") {
+            filters.push(['==', ['get', 'cu_affiliation'], true]);
+          }
+
+          if (residentFilter === "students") {
+            filters.push([
+              '>=',
+              [
+                'index-of',
+                'student',
+                [
+                  'downcase',
+                  ['coalesce', ['get', 'roles_string'], '']
+                ]
+              ],
+              0
+            ]);
+          }
+
+          map.setFilter('points', filters);
+          
+          //Point marker colors
+          map.setPaintProperty('points', 'circle-color', [
+            'case',
+            // University students are always gold
+            [
+             '>=',
+              [
+                'index-of',
+                'student',
+                ['downcase', ['coalesce', ['get', 'roles_string'], '']]
+              ],
+              0
+            ], '#CFB87C',  // gold
+            // CU-Affiliates (but not students) are blue
+            ['==', ['get', 'cu_affiliation'], true], '#096FAE',
+            // All others are dark gray
+            '#565A5C'
+          ]);
+        
+
+      }
+
+        // Roles for student search
+        geojson.features.forEach(f => {
+          let residents = f.properties.residents || [];
+          const roles = residents.map(r => (r["role(s)"] || "")).join(" ").toLowerCase();
+          f.properties.roles_string = roles;
+        });
+        map.getSource('points').setData(JSON.parse(JSON.stringify(geojson)));
+
+
+        // Year slider
+        const validYears = [1916, 1926, 1936, 1946, 1955, 1965, 1975];
+        const slider = document.getElementById('yearSlider');
+        slider.addEventListener('input', (e) => {
+          currentYear = validYears[parseInt(e.target.value)];
+          document.getElementById('yearValue').textContent = currentYear;
+          updateFilter();
+        });
+
+        // Play button
+        let playing = false;
+        let playInterval = null;
+
+        const playButton = document.getElementById('playButton');
+
+        playButton.addEventListener('click', () => {
+        if (!playing) {
+            playing = true;
+            playButton.textContent = '⏸ Pause';
+            playInterval = setInterval(() => {
+            let index = parseInt(slider.value);
+            if (index < validYears.length - 1) {
+                index++;
+            } else {
+                index = 0; // loop back to start
+            }
+            slider.value = index;
+            currentYear = validYears[index];
+            document.getElementById('yearValue').textContent = currentYear;
+            updateFilter();
+            }, 1000); // change every 1 second
+        } else {
+            playing = false;
+            playButton.textContent = '▶ Play';
+            clearInterval(playInterval);
+        }
+        });
+
+        // City Buttons
+        const cityButtons = document.querySelectorAll('.city-button');
+        cityButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            currentCity = btn.dataset.city;
+            updateFilter();
+            map.fitBounds(cityBounds[currentCity], { padding: 50, duration: 1000 });
+          });
+        });
+
+        // Resident filter buttons
+        document.querySelectorAll('.filter-button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            residentFilter = btn.dataset.filter;  // all | cu | students
+            updateFilter();
+          });
+        });
+
+        // Popup on click
+        map.on('click', 'points', (e) => {
+          const props = e.features[0].properties;
+          const coords = e.features[0].geometry.coordinates.slice();
+          let residents = [];
+
+          try {
+            residents = JSON.parse(props.residents || "[]");
+          } catch {}
+
+          let description = `<strong>Address:</strong> ${props.address || 'Unknown'}<br>`;
+          if (residents.length > 0) {
+            description += "<strong>Residents:</strong><br>";
+            residents.forEach(r => {
+              description += `• ${r.name || 'Unknown'} (${r['role(s)'] || 'No role'})<br>`;
+            });
+          }
+          new mapboxgl.Popup().setLngLat(coords).setHTML(description).addTo(map);
+        });
+      });
+    </script>
+  </body>
+</html>
