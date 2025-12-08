@@ -57,6 +57,25 @@
         background: #0078a8;
       }
 
+      .map-button {
+        background: #6c757d;
+        border: none;
+        color: white;
+        padding: 6px 10px;
+        margin-right: 6px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .map-button.active {
+        background: #0078a8;
+      }
+
+      .map-button:hover {
+        opacity: 0.9;
+      }
+
       #yearLabel {
         font-size: 14px;
         margin-bottom: 4px;
@@ -112,6 +131,22 @@
         background: #f3f3f3;
       }
 
+      /* Zoom level display */
+      #zoomDisplay {
+        position: absolute;
+        bottom: 30px;
+        right: 10px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 8px 12px;
+        border-radius: 4px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-family: monospace;
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+      }
+
     </style>
   </head>
 
@@ -130,6 +165,15 @@
           <button class="filter-button" data-filter="students">Show Only University Students</button>
         </div>
 
+      <h3>Historical Map</h3>
+      <div style="margin-bottom:10px;">
+        <button id="toggleHistMapButton" style="padding:6px 12px; border:none; border-radius:4px; background:#0078a8; color:white; cursor:pointer;">
+          Hide Historical Map
+        </button>
+        <button class="map-button active" data-map="usgs">USGS 1960</button>
+        <button class="map-button" data-map="drumms">Drumms 1914</button>
+      </div>
+
       <h3>Year: <span id="yearValue">1975</span></h3>
       <button id="playButton" style="margin-top:8px; padding:6px 12px; border:none; border-radius:4px; background:#0078a8; color:white; cursor:pointer;">
         ▶ Play
@@ -146,6 +190,7 @@
         <input id="search" type="text" placeholder="Search by Name or Address">
         <div id="searchResults"></div>
       </div>
+      <div id="zoomDisplay">Zoom: 11.0</div>
     </div>
     
     <!--For the search bar-->
@@ -167,9 +212,20 @@
 
       map.addControl(new mapboxgl.NavigationControl());
 
+      // Update zoom display
+      function updateZoomDisplay() {
+        const zoom = map.getZoom().toFixed(1);
+        document.getElementById('zoomDisplay').textContent = `Zoom: ${zoom}`;
+      }
+
+      map.on('zoom', updateZoomDisplay);
+      map.on('load', updateZoomDisplay);
+
       let currentYear = 1975;
       let currentCity = "Boulder";
       let residentFilter = "all";
+      let historicalMapVisible = true;
+      let selectedHistoricalMap = 'usgs'; // 'usgs' or 'drumms'
 
       // Define bounding boxes for each city (approximate)
       const cityBounds = {
@@ -181,6 +237,45 @@
 
       // GeoJSON File loaded here
       map.on('load', async () => {
+        // USGS 1960 sources
+        map.addSource('usgs_low_res', {
+          type: 'raster',
+          tiles: [
+            'http://[::]:8000/tiles/USGS_Region_1960/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256
+        });
+
+        // Drumms 1914 sources
+        map.addSource('drumms_high_res', {
+          type: 'raster',
+          tiles: [
+            'http://[::]:8000/tiles/Drumms_Region_1914/{z}/{x}/{y}.png'
+          ],
+          tileSize: 256
+        });
+
+        // USGS 1960 layer (visible when zoomed out)
+        map.addLayer({
+          id: 'usgs_layer',
+          type: 'raster',
+          source: 'usgs_low_res',
+          minzoom: 10,
+          maxzoom: 18,
+          paint: { 'raster-opacity': 1 }
+        });
+
+        // Drumms 1914 layer
+        map.addLayer({
+          id: 'drumms_layer',
+          type: 'raster',
+          source: 'drumms_high_res',
+          minzoom: 10,
+          maxzoom: 18,
+          paint: { 'raster-opacity': 1 },
+          layout: { 'visibility': 'none' }
+        });
+      
         const response = await fetch('geocoded_all_cities.geojson');
         const geojson = await response.json();
 
@@ -429,6 +524,50 @@
             residentFilter = btn.dataset.filter;  // all | cu | students
             updateFilter();
           });
+        });
+
+        // Map selection buttons
+        const mapButtons = document.querySelectorAll('.map-button');
+        mapButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            selectedHistoricalMap = btn.dataset.map;
+            
+            // Update button states
+            mapButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Show selected map, hide others
+            if (historicalMapVisible) {
+              if (selectedHistoricalMap === 'usgs') {
+                map.setLayoutProperty('usgs_layer', 'visibility', 'visible');
+                map.setLayoutProperty('drumms_layer', 'visibility', 'none');
+              } else {
+                map.setLayoutProperty('usgs_layer', 'visibility', 'none');
+                map.setLayoutProperty('drumms_layer', 'visibility', 'visible');
+              }
+            }
+          });
+        });
+
+        // Toggle historical map layers
+        const toggleHistMapButton = document.getElementById('toggleHistMapButton');
+        toggleHistMapButton.addEventListener('click', () => {
+          historicalMapVisible = !historicalMapVisible;
+          
+          if (historicalMapVisible) {
+            // Show the selected map
+            if (selectedHistoricalMap === 'usgs') {
+              map.setLayoutProperty('usgs_layer', 'visibility', 'visible');
+            } else {
+              map.setLayoutProperty('drumms_layer', 'visibility', 'visible');
+            }
+            toggleHistMapButton.textContent = 'Hide Historical Map';
+          } else {
+            // Hide both maps
+            map.setLayoutProperty('usgs_layer', 'visibility', 'none');
+            map.setLayoutProperty('drumms_layer', 'visibility', 'none');
+            toggleHistMapButton.textContent = 'Show Historical Map';
+          }
         });
 
         // Popup on click
