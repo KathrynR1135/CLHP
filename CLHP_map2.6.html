@@ -111,6 +111,56 @@
         background: #f3f3f3;
       }
 
+      /* Legend styling */
+      #legend {
+        position: absolute;
+        bottom: 30px;
+        right: 10px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-family: sans-serif;
+        font-size: 13px;
+      }
+
+      #legend h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      #playButton {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        background: #0078a8;
+        color: white;
+        cursor: pointer;
+        min-width: 80px;
+        max-height: 27px;
+      }
+
+      .legend-item {
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+      }
+
+      .legend-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        margin-right: 8px;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
     </style>
   </head>
 
@@ -129,19 +179,33 @@
           <button class="filter-button" data-filter="students">Show Only University Students</button>
         </div>
 
-      <h3>Year: <span id="yearValue">1975</span></h3>
-      <button id="playButton" style="margin-top:8px; padding:6px 12px; border:none; border-radius:4px; background:#0078a8; color:white; cursor:pointer;">
-        ▶ Play
-      </button>
-
-      <div>
-        <!-- <label id="yearLabel">Year: <span id="yearValue">1975</span></label> -->
-        <input id="yearSlider" type="range" min="0" max="7" step="1" value="7">
+      <h3 style="margin-top:10px">Year: <span id="yearValue">1975</span></h3>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button id="playButton">
+          ▶ Play
+        </button>
+        <input id="yearSlider" type="range" min="0" max="6" step="1" value="6">
       </div>
       
       <div id="searchContainer">
         <input id="search" type="text" placeholder="Search by Name or Address">
         <div id="results"></div>
+      </div>
+    </div>
+
+    <div id="legend">
+      <h4>Legend</h4>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #CFB87C;"></div>
+        <span>University Students</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #096FAE;"></div>
+        <span>CU-Affiliates (Non-Students)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #565A5C;"></div>
+        <span>Non-Affiliated Residents</span>
       </div>
     </div>
 
@@ -176,7 +240,7 @@
 
       // GeoJSON File loaded here
       map.on('load', async () => {
-        const response = await fetch('geocoded_all_cities.geojson');
+        const response = await fetch('geocoded_all_cities_v2.geojson');
         const geojson = await response.json();
 
         map.addSource('points', {
@@ -191,11 +255,20 @@
           paint: {
             'circle-color': [
               'case',
-              ['==', ['get', 'cu_affiliation'], true],
-              '#CFB87C',
-              ['==', ['get', 'cu_affiliation'], false],
-              '#565A5C',
-              '#cccccc'
+              // University students are always gold
+              [
+               '>=',
+                [
+                  'index-of',
+                  'student',
+                  ['downcase', ['coalesce', ['get', 'roles_string'], '']]
+                ],
+                0
+              ], '#CFB87C',  // gold
+              // CU-Affiliates (but not students) are blue
+              ['==', ['get', 'cu_affiliation'], true], '#096FAE',  // blue
+              // All others are dark gray
+              '#565A5C'  // dark gray
             ],
             'circle-radius': 6,
             'circle-stroke-width': 2,
@@ -304,26 +377,6 @@
           }
 
           map.setFilter('points', filters);
-           
-          map.setPaintProperty('points', 'circle-color', [
-            'case',
-            // University students are always gold
-            [
-             '>=',
-              [
-                'index-of',
-                'student',
-                ['downcase', ['coalesce', ['get', 'roles_string'], '']]
-              ],
-              0
-            ], '#CFB87C',  // gold
-            // CU-Affiliates (but not students) are blue
-            ['==', ['get', 'cu_affiliation'], true], '#096FAE',
-            // All others are dark gray
-            '#565A5C'
-          ]);
-        
-
       }
 
         // Roles for student search
@@ -336,7 +389,7 @@
 
 
         // Slider
-        const validYears = [1904, 1916, 1926, 1936, 1946, 1955, 1965, 1975];
+        const validYears = [1916, 1926, 1936, 1946, 1955, 1965, 1975];
         const slider = document.getElementById('yearSlider');
         slider.addEventListener('input', (e) => {
           currentYear = validYears[parseInt(e.target.value)];
