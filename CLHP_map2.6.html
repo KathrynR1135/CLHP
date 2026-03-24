@@ -205,7 +205,7 @@
       <div id="cuFilterContainer">
           <h3>Residents</h3>
           <button class="filter-button" data-filter="all">Show All</button>
-          <button class="filter-button" data-filter="cu">Show Only CU-Affiliates</button>
+          <button class="filter-button" data-filter="cu">Show Only CU-Employees</button>
           <button class="filter-button" data-filter="students">Show Only College Students</button>
         </div>
 
@@ -234,7 +234,7 @@
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #096FAE;"></div>
-        <span>CU-Affiliates</span>
+        <span>CU-Employees</span>
       </div>
       <div class="legend-item">
         <div class="legend-color" style="background-color: #565A5C;"></div>
@@ -302,7 +302,7 @@
                 ],
                 0
               ], '#CFB87C',  // gold
-              // CU-Affiliates (but not students) are blue
+              // CU-Employees (but not students) are blue
               ['==', ['get', 'cu_affiliation'], true], '#096FAE',  // blue
               // All others are dark gray
               '#565A5C'  // dark gray
