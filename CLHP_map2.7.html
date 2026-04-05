@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>City-Year Map</title>
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <style>
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      #mapContainer {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+      }
+
+      /* Control container (buttons + slider) */
+      #controls {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-family: sans-serif;
+      }
+
+      #controls h3 {
+        margin-top: 0;
+        font-size: 16px;
+        margin-bottom: 8px;
+      }
+
+      .city-button,
+      .filter-button {
+        background: #0078a8;
+        border: none;
+        color: white;
+        padding: 6px 10px;
+        margin-right: 6px;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
+      .city-button:hover,
+      .filter-button:hover {
+        background: #0078a8;
+      }
+
+      #yearLabel {
+        font-size: 14px;
+        margin-bottom: 4px;
+        display: block;
+      }
+
+      #yearSlider {
+        width: 300px;
+      }
+
+      #yearControlRow {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      #sliderWrap {
+        width: 300px;
+      }
+
+      #yearTicks {
+        display: flex;
+        justify-content: space-between;
+        margin-top: -6px;
+        font-size: 10px;
+        color: #000000;
+        line-height: 1;
+      }
+
+      #cuFilterContainer {
+        margin-top: 10px;
+        font-size: 14px;
+      }
+
+      #searchContainer {
+        position: fixed;
+        top: 10px;
+        right: 50px;
+        z-index: 9999999;
+
+        width: 300px;
+        background: white;
+        border-radius: 6px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        font-family: sans-serif;
+        overflow: visible;
+      }
+
+      #search {
+        width: 100%;
+        padding: 10px;
+        border: none;
+        outline: none;
+        font-size: 14px;
+        box-sizing: border-box;
+        border-bottom: 1px solid #ddd;
+      }
+
+      /* Results container (used id="results") */
+      #results,
+      #searchResults {
+        max-height: 400px;
+        overflow-y: auto;
+      }
+
+      /* Rows inside results: add clearer dividing lines */
+      #results > div,
+      #searchResults > div {
+        padding: 8px;
+        cursor: pointer;
+        border-bottom: 1px solid #e6e6e6;
+      }
+
+      /* Remove border on last item for a cleaner look */
+      #results > div:last-child,
+      #searchResults > div:last-child {
+        border-bottom: none;
+      }
+
+      #results > div:hover,
+      #searchResults > div:hover {
+        background: #f3f3f3;
+      }
+
+      /* Legend styling */
+      #legend {
+        position: absolute;
+        bottom: 30px;
+        right: 10px;
+        z-index: 10;
+        background: rgba(255, 255, 255, 0.95);
+        padding: 12px;
+        border-radius: 8px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-family: sans-serif;
+        font-size: 13px;
+      }
+
+      #legend h4 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        font-weight: bold;
+      }
+
+      #playButton {
+        padding: 6px 12px;
+        border: none;
+        border-radius: 4px;
+        background: #0078a8;
+        color: white;
+        cursor: pointer;
+        min-width: 80px;
+        max-height: 27px;
+      }
+
+      .legend-item {
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+      }
+
+      .legend-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .legend-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        margin-right: 8px;
+        border: 2px solid #ffffff;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Minimal tooltip */
+      .tip { position: relative; cursor: help; margin-left: 4px; display: inline-flex; align-items: center; }
+      .tip::before { content: '?'; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: #888; color: #fff; font-size: 9px; font-weight: bold; font-style: normal; line-height: 1; vertical-align: middle; }
+      .tip .tip-text { display: none; position: absolute; left: 0; top: 100%; background: #333; color: #fff; padding: 6px 9px; border-radius: 5px; width: 230px; font-size: 12px; font-weight: normal; line-height: 1.5; z-index: 99999; white-space: normal; }
+      .tip:hover .tip-text { display: block; }
+    </style>
+  </head>
+
+  <body>
+    <div id="controls">
+      <h3>Town <span class="tip"><span class="tip-text">You can click on one town or the full region, showing all three.</span></span></h3>
+      <button class="city-button" data-city="Boulder">Boulder</button>
+      <button class="city-button" data-city="Lafayette">Lafayette</button>
+      <button class="city-button" data-city="Longmont">Longmont</button>
+      <button class="city-button" data-city="Region">Region</button>
+
+      <div id="cuFilterContainer">
+          <h3>Latino Residents <span class="tip"><span class="tip-text">Click on one of these options.</span></span></h3>
+          <button class="filter-button" data-filter="all">Show All</button>
+          <button class="filter-button" data-filter="cu">Show Only CU-Employees</button>
+          <button class="filter-button" data-filter="students">Show Only College Students</button>
+        </div>
+
+      <h3 style="margin-top:10px">Year: <span id="yearValue">1975</span> <span class="tip"><span class="tip-text">Move the end of the slider button to the year you want.<br>Or you can click Play to see the maps move through the dates.<br>When it is sliding, click Pause to stop at a particular date.</span></span></h3>
+      <div id="yearControlRow">
+        <button id="playButton">
+          ▶ Play
+        </button>
+        <div id="sliderWrap">
+          <div id="yearTicks"></div>
+          <input id="yearSlider" type="range" min="0" max="6" step="1" value="6">
+        </div>
+      </div>
+      
+      <div id="searchContainer">
+        <input id="search" type="text" placeholder="Search by Name or Address">
+        <span class="tip" style="position:absolute; top:10px; right:10px;"><span class="tip-text" style="left:auto; right:0;">Type in the name of a person, family, or street address. A list of results will appear.<br><br>Click on an entry and it will take you to the map for that year and the location, with details.<br><br>If the information you want is hidden behind the large box at the upper left, click and hold the "hand" symbol to move the map so you can see your section.</span></span>
+        <div id="results"></div>
+      </div>
+    </div>
+
+    <div id="legend">
+      <h4>Legend</h4>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #CFB87C;"></div>
+        <span>College Students</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #096FAE;"></div>
+        <span>CU-Employees</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background-color: #565A5C;"></div>
+        <span>Other Residents</span>
+      </div>
+    </div>
+
+    <div id="mapContainer"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/fuse.js@6.6.2"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.14.0/mapbox-gl.js"></script>
+
+    <script>
+      // Define bounding boxes for each city (approximate)
+      const cityBounds = {
+        Boulder: [[-105.32, 39.95], [-105.18, 40.08]],
+        Lafayette: [[-105.12, 39.97], [-105.04, 40.03]],
+        Longmont: [[-105.14, 40.13], [-105.05, 40.20]],
+        Region: [[-105.32, 39.95], [-105.04, 40.20]]
+      };
+      
+      mapboxgl.accessToken = 'pk.eyJ1Ijoia2F0aHJ5bjExMzUiLCJhIjoiY21mMzQ0emhkMDg5ZjJxcTVkYmpxenJoNSJ9.GoUAILryU_UK5jy7-StXaA';
+
+      const map = new mapboxgl.Map({
+        container: 'mapContainer',
+        style: 'mapbox://styles/mapbox/standard',
+        bounds: cityBounds.Region
+      });
+
+      map.addControl(new mapboxgl.NavigationControl());
+
+      // Minimal tooltip for the zoom +/- control
+      map.on('load', () => {
+        const navCtrl = document.querySelector('.mapboxgl-ctrl-zoom-in');
+        if (navCtrl && navCtrl.closest('.mapboxgl-ctrl-group')) {
+          navCtrl.closest('.mapboxgl-ctrl-group').title = 'Use this plus or minus zoom control to go in or out on the map.';
+        }
+      });
+
+      // Track the currently-open popup so we only show one at a time
+      let currentPopup = null;
+
+      let currentYear = 1975;
+      let currentCity = "Region";
+      let residentFilter = "all";
+
+      
+
+      // GeoJSON File loaded here
+      map.on('load', async () => {
+        const response = await fetch('geocoded_all_cities_v2.geojson');
+        const geojson = await response.json();
+
+        map.addSource('points', {
+          type: 'geojson',
+          data: geojson
+        });
+
+        map.addLayer({
+          id: 'points',
+          type: 'circle',
+          source: 'points',
+          paint: {
+            'circle-color': [
+              'case',
+              // University students are always gold
+              [
+               '>=',
+                [
+                  'index-of',
+                  'student',
+                  ['downcase', ['coalesce', ['get', 'roles_string'], '']]
+                ],
+                0
+              ], '#CFB87C',  // gold
+              // CU-Employees (but not students) are blue
+              ['==', ['get', 'cu_affiliation'], true], '#096FAE',  // blue
+              // All others are dark gray
+              '#565A5C'  // dark gray
+            ],
+            'circle-radius': 6,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': '#ffffff'
+          },
+          filter: ['all',
+            ['==', ['get', 'year'], currentYear]
+            // ,
+            // ['==', ['get', 'city'], currentCity]
+          ]
+        });
+
+        // search bar code starts
+        const fuse = new Fuse(geojson.features, {
+          keys: [
+            "properties.address",
+            "properties.residents.name"   // search names inside residents[]
+          ],
+          threshold: 0.3,
+        });
+
+        const searchInput = document.getElementById("search");
+        const resultsDiv = document.getElementById("results");
+        let lastResults = [];
+
+        // Typing in search box
+        searchInput.addEventListener("input", (e) => {
+          const query = e.target.value.trim();
+          if (!query) {
+            resultsDiv.innerHTML = "";
+            return;
+          }
+          const results = fuse.search(query);
+          const trimmed = results.slice(0, 10);
+          lastResults = trimmed;
+          showSearchResults(trimmed);
+        });
+
+        // When focusing the input, re-show the last results (so user doesn't have to type again)
+        searchInput.addEventListener('focus', () => {
+          const query = searchInput.value.trim();
+          if (query) {
+            const results = fuse.search(query).slice(0,10);
+            lastResults = results;
+            showSearchResults(results);
+          } else if (lastResults && lastResults.length) {
+            showSearchResults(lastResults);
+          }
+        });
+
+        // When input loses focus, hide results after a short delay so clicks can register
+        searchInput.addEventListener('blur', () => {
+          setTimeout(() => {
+            resultsDiv.innerHTML = '';
+          }, 150);
+        });
+
+        // Displaying search results
+        function showSearchResults(results) {
+          resultsDiv.innerHTML = "";
+          lastResults = results;
+
+          results.forEach(result => {
+            const f = result.item;
+            const props = f.properties;
+            const residentNames = props.residents
+                .map(r => r.name)
+                .join(", ");
+            const row = document.createElement("div");
+            row.innerHTML = `
+              <strong>${props.address}</strong><br>
+              <small>${residentNames}</small>
+              , ${props.year}
+            `;
+            row.onclick = () => zoomToFeature(f);
+
+            resultsDiv.appendChild(row);
+          });
+        }
+
+        // Zooming in
+        function zoomToFeature(feature) {
+          const coords = feature.geometry.coordinates;
+          map.flyTo({
+            center: coords,
+            zoom: 15,
+            speed: 0.7
+          });
+
+          // If the feature has a year, update the slider and currentYear
+          try {
+            const featureYear = feature.properties.year;
+            if (typeof featureYear !== 'undefined' && Array.isArray(validYears)) {
+              const idx = validYears.indexOf(Number(featureYear));
+              if (idx >= 0) {
+                slider.value = idx;
+                currentYear = validYears[idx];
+                document.getElementById('yearValue').textContent = currentYear;
+                updateFilter();
+              }
+            }
+          } catch (err) {
+            // ignore if validYears/slider not available yet
+          }
+
+          // Popup HTML
+          let popupHTML = `
+            <strong>Address:</strong> ${feature.properties.address}<br><br>
+            <strong>Residents:</strong><br>
+          `;
+
+          feature.properties.residents.forEach(r => {
+            popupHTML += `• ${r.name} (${r["role(s)"]})<br>`;
+          });
+
+          // Only one popup at a time: remove existing then add new
+          try { if (currentPopup) currentPopup.remove(); } catch (e) {}
+          const popup = new mapboxgl.Popup()
+            .setLngLat(coords)
+            .setHTML(popupHTML)
+            .addTo(map);
+          currentPopup = popup;
+          popup.on('close', () => { if (currentPopup === popup) currentPopup = null; });
+
+          // clear results list
+          resultsDiv.innerHTML = "";
+        }
+
+        // University affiliation filter code
+        function updateFilter() {
+          const filters = ['all', ['==', ['get', 'year'], currentYear]];
+
+          if (residentFilter === "cu") {
+            filters.push(['==', ['get', 'cu_affiliation'], true]);
+          }
+
+          if (residentFilter === "students") {
+            filters.push([
+              '>=',
+              [
+                'index-of',
+                'student',
+                [
+                  'downcase',
+                  ['coalesce', ['get', 'roles_string'], '']
+                ]
+              ],
+              0
+            ]);
+          }
+
+          map.setFilter('points', filters);
+      }
+
+        // Roles for student search
+        geojson.features.forEach(f => {
+          let residents = f.properties.residents || [];
+          const roles = residents.map(r => (r["role(s)"] || "")).join(" ").toLowerCase();
+          f.properties.roles_string = roles;
+        });
+        map.getSource('points').setData(JSON.parse(JSON.stringify(geojson)));
+
+
+        // Slider
+        const validYears = [1916, 1926, 1936, 1946, 1955, 1965, 1975];
+        const slider = document.getElementById('yearSlider');
+        const yearTicks = document.getElementById('yearTicks');
+
+        slider.max = validYears.length - 1;
+        yearTicks.innerHTML = '';
+        validYears.forEach((year) => {
+          const tick = document.createElement('span');
+          tick.textContent = year;
+          yearTicks.appendChild(tick);
+        });
+
+        slider.addEventListener('input', (e) => {
+          currentYear = validYears[parseInt(e.target.value)];
+          document.getElementById('yearValue').textContent = currentYear;
+          updateFilter();
+        });
+
+        // Play Button
+        let playing = false;
+        let playInterval = null;
+
+        const playButton = document.getElementById('playButton');
+
+        playButton.addEventListener('click', () => {
+        if (!playing) {
+            playing = true;
+            playButton.textContent = '⏸ Pause';
+            playInterval = setInterval(() => {
+            let index = parseInt(slider.value);
+            if (index < validYears.length - 1) {
+                index++;
+            } else {
+                index = 0; // loop back to start
+            }
+            slider.value = index;
+            currentYear = validYears[index];
+            document.getElementById('yearValue').textContent = currentYear;
+            updateFilter();
+            }, 1000); // change every 1 second
+        } else {
+            playing = false;
+            playButton.textContent = '▶ Play';
+            clearInterval(playInterval);
+        }
+        });
+
+        // City Buttons
+        const cityButtons = document.querySelectorAll('.city-button');
+        cityButtons.forEach(btn => {
+          btn.addEventListener('click', () => {
+            currentCity = btn.dataset.city;
+            updateFilter();
+            map.fitBounds(cityBounds[currentCity], { padding: 50, duration: 1000 });
+          });
+        });
+
+        // Resident filter buttons
+        document.querySelectorAll('.filter-button').forEach(btn => {
+          btn.addEventListener('click', () => {
+            residentFilter = btn.dataset.filter;  // all | cu | students
+            updateFilter();
+          });
+        });
+
+        // Popup
+        map.on('click', 'points', (e) => {
+          const props = e.features[0].properties;
+          const coords = e.features[0].geometry.coordinates.slice();
+          let residents = [];
+
+          try {
+            residents = JSON.parse(props.residents || "[]");
+          } catch {}
+
+          let description = `<strong>Address:</strong> ${props.address || 'Unknown'}<br>`;
+          if (residents.length > 0) {
+            description += "<strong>Residents:</strong><br>";
+            residents.forEach(r => {
+              description += `• ${r.name || 'Unknown'} (${r['role(s)'] || 'No role'})<br>`;
+            });
+          }
+          // Only one popup at a time when clicking map points
+          try { if (currentPopup) currentPopup.remove(); } catch (e) {}
+          const popup = new mapboxgl.Popup().setLngLat(coords).setHTML(description).addTo(map);
+          currentPopup = popup;
+          popup.on('close', () => { if (currentPopup === popup) currentPopup = null; });
+        });
+      });
+    </script>
+  </body>
+</html>
