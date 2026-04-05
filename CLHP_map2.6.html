@@ -102,7 +102,7 @@
         border-radius: 6px;
         box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         font-family: sans-serif;
-        overflow: hidden;
+        overflow: visible;
       }
 
       #search {
@@ -191,25 +191,30 @@
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       }
 
+      /* Minimal tooltip */
+      .tip { position: relative; cursor: help; margin-left: 4px; display: inline-flex; align-items: center; }
+      .tip::before { content: '?'; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: #888; color: #fff; font-size: 9px; font-weight: bold; font-style: normal; line-height: 1; vertical-align: middle; }
+      .tip .tip-text { display: none; position: absolute; left: 0; top: 100%; background: #333; color: #fff; padding: 6px 9px; border-radius: 5px; width: 230px; font-size: 12px; font-weight: normal; line-height: 1.5; z-index: 99999; white-space: normal; }
+      .tip:hover .tip-text { display: block; }
     </style>
   </head>
 
   <body>
     <div id="controls">
-      <h3>City</h3>
+      <h3>Town <span class="tip"><span class="tip-text">You can click on one town or the full region, showing all three.</span></span></h3>
       <button class="city-button" data-city="Boulder">Boulder</button>
       <button class="city-button" data-city="Lafayette">Lafayette</button>
       <button class="city-button" data-city="Longmont">Longmont</button>
       <button class="city-button" data-city="Region">Region</button>
 
       <div id="cuFilterContainer">
-          <h3>Residents</h3>
+          <h3>Latino Residents <span class="tip"><span class="tip-text">Click on one of these options.</span></span></h3>
           <button class="filter-button" data-filter="all">Show All</button>
           <button class="filter-button" data-filter="cu">Show Only CU-Employees</button>
           <button class="filter-button" data-filter="students">Show Only College Students</button>
         </div>
 
-      <h3 style="margin-top:10px">Year: <span id="yearValue">1975</span></h3>
+      <h3 style="margin-top:10px">Year: <span id="yearValue">1975</span> <span class="tip"><span class="tip-text">Move the end of the slider button to the year you want.<br>Or you can click Play to see the maps move through the dates.<br>When it is sliding, click Pause to stop at a particular date.</span></span></h3>
       <div id="yearControlRow">
         <button id="playButton">
           ▶ Play
@@ -222,6 +227,7 @@
       
       <div id="searchContainer">
         <input id="search" type="text" placeholder="Search by Name or Address">
+        <span class="tip" style="position:absolute; top:10px; right:10px;"><span class="tip-text" style="left:auto; right:0;">Type in the name of a person, family, or street address. A list of results will appear.<br><br>Click on an entry and it will take you to the map for that year and the location, with details.<br><br>If the information you want is hidden behind the large box at the upper left, click and hold the "hand" symbol to move the map so you can see your section.</span></span>
         <div id="results"></div>
       </div>
     </div>
@@ -265,6 +271,14 @@
       });
 
       map.addControl(new mapboxgl.NavigationControl());
+
+      // Minimal tooltip for the zoom +/- control
+      map.on('load', () => {
+        const navCtrl = document.querySelector('.mapboxgl-ctrl-zoom-in');
+        if (navCtrl && navCtrl.closest('.mapboxgl-ctrl-group')) {
+          navCtrl.closest('.mapboxgl-ctrl-group').title = 'Use this plus or minus zoom control to go in or out on the map.';
+        }
+      });
 
       // Track the currently-open popup so we only show one at a time
       let currentPopup = null;
